@@ -1,0 +1,38 @@
+name: Retrenamiento Semanal del Oráculo
+
+# 1. ¿Cuándo se ejecuta? (El reloj cronograma)
+on:
+  schedule:
+    # Esto significa: "Ejecútalo todos los sábados a la medianoche"
+    - cron: '0 0 * * 6'
+
+jobs:
+  entrenar:
+    runs-on: ubuntu-latest # GitHub nos presta una compu con Linux
+
+    steps:
+    # 2. Copia tu código a la compu prestada
+    - uses: actions/checkout@v3
+
+    # 3. Instala Python
+    - name: Configurar Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    # 4. Instala tus librerías (pandas, xgboost, yfinance)
+    - name: Instalar dependencias
+      run: pip install -r requirements.txt
+
+    # 5. ¡Ejecuta tu script de entrenamiento!
+    - name: Entrenar Modelo
+      run: python src/retrenar_modelo.py
+
+    # 6. Guarda el nuevo .pkl en tu repositorio de GitHub
+    - name: Subir el nuevo modelo a GitHub
+      run: |
+        git config --global user.name "Robot de Retrenamiento"
+        git config --global user.email "robot@oraculo.com"
+        git add models/modelo_financiero_prueba_xgb.pkl
+        git commit -m "🤖 Modelo reentrenado y actualizado con datos de esta semana"
+        git push
