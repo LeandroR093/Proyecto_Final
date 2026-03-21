@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np  # <-- ¡NUEVO! Necesario para manejar los infinitos
 import yfinance as yf
 import xgboost as xgb
 import pickle
@@ -20,11 +21,9 @@ lista_dataframes = []
 print("📥 Descargando datos recientes de Wall Street...")
 for ticker, ticker_encoded in diccionario_tickers.items():
     try:
-        # SOLUCIÓN 1: Usamos Ticker().history() que es 100% estable para evitar errores de columnas
         stock = yf.Ticker(ticker)
         df = stock.history(period="2y")
         
-        # Si la empresa no tiene datos suficientes, la saltamos
         if df.empty or len(df) < 200:
             continue
             
@@ -67,15 +66,18 @@ for ticker, ticker_encoded in diccionario_tickers.items():
         lista_dataframes.append(df)
         
     except Exception as e:
-        # SOLUCIÓN 2: ¡No escondemos el error! Lo imprimimos para saber qué falló.
         print(f"⚠️ Error procesando {ticker}: {e}")
 
-# SOLUCIÓN 3: Evitar el "No objects to concatenate" si todo falla
 if len(lista_dataframes) == 0:
     print("❌ ERROR CRÍTICO: No se pudo descargar información de ninguna empresa.")
-    sys.exit(1) # Apaga el script con error para que GitHub nos avise
+    sys.exit(1)
 
 df_final = pd.concat(lista_dataframes)
+
+# --- LIMPIEZA ANTI-INFINITOS (LA SOLUCIÓN AL ERROR) ---
+print("🧹 Limpiando valores infinitos...")
+# Reemplazamos los infinitos positivos y negativos por NaN, y luego borramos esas filas
+df_final = df_final.replace([np.inf, -np.inf], np.nan).dropna()
 
 # --- PASO 3: PREPARAR LOS DATOS ---
 print("⚙️ Preparando datos para XGBoost...")
