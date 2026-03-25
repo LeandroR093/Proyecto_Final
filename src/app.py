@@ -4,111 +4,372 @@ import pickle
 import json
 import yfinance as yf
 import numpy as np
+import plotly.graph_objects as go
+from indicators import calcular_indicadores_grid, formatear_valor
+from simulation import ejecutar_monte_carlo
 
-st.set_page_config(page_title="Oráculo Financiero Automático", page_icon="🤖", layout="centered")
+st.set_page_config(page_title="Advanced Quant Trading Platform", page_icon="⚡", layout="wide")
 
-# --- CARGAR MODELO Y DICCIONARIO ---
+# --- CUSTOM CSS INJECTION ---
+st.markdown("""
+<style>
+    /* Dark Theme Setup */
+    body {
+        background-color: #0d1117;
+        color: #ffffff;
+    }
+    [data-testid="stSidebar"] {
+        background-color: #161b22;
+        border-right: 1px solid #30363d;
+    }
+    
+    /* Metrics Grid */
+    .metric-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px;
+        margin-top: 20px;
+    }
+    .metric-card {
+        background-color: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 8px;
+        padding: 16px;
+        text-align: center;
+        transition: transform 0.2s;
+    }
+    .metric-card:hover {
+        transform: translateY(-2px);
+        border-color: #58a6ff;
+    }
+    .metric-title {
+        color: #8b949e;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .metric-value {
+        color: #f0f6fc;
+        font-size: 20px;
+        font-weight: 600;
+        margin-top: 6px;
+    }
+    .metric-pct {
+        font-size: 12px;
+        margin-top: 4px;
+    }
+    .pct-up { color: #3fb950; }
+    .pct-down { color: #f85149; }
+    .pct-neutral { color: #8b949e; }
+    
+    /* Banner/Notification */
+    .banner {
+        background-color: rgba(56, 139, 253, 0.1);
+        border: 1px solid rgba(56, 139, 253, 0.4);
+        border-radius: 8px;
+        padding: 12px 16px;
+        margin: 16px 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+import os
+
+# --- CARGAR ARCHIVOS ---
 @st.cache_resource
-def cargar_archivos():
-    with open('models/oraculo_financiero2_xgb.pkl', 'rb') as archivo_modelo:
-        modelo = pickle.load(archivo_modelo)
-    with open('src/diccionario_tickers.json', 'r') as archivo_json:
-        diccionario = json.load(archivo_json)
+def cargar_archivos_v2():
+    # Directorio actual (src/)
+    dir_actual = os.path.dirname(os.path.abspath(__file__))
+    # Directorio raíz (Proyecto_Final/)
+    dir_raiz = os.path.dirname(dir_actual)
+    
+    ruta_modelo = os.path.join(dir_raiz, 'models', 'oraculo_financiero2_xgb.pkl')
+    ruta_diccionario = os.path.join(dir_actual, 'diccionario_tickers.json')
+    
+    try:
+        with open(ruta_modelo, 'rb') as archivo_modelo:
+            modelo = pickle.load(archivo_modelo)
+    except Exception as e:
+        print(f"Error cargando modelo: {e}")
+        modelo = None # Fallback if model not found
+        
+    try:
+        with open(ruta_diccionario, 'r') as archivo_json:
+            diccionario = json.load(archivo_json)
+    except Exception as e:
+        print(f"Error cargando diccionario: {e}")
+        diccionario = {}
+        
     return modelo, diccionario
 
-modelo, diccionario_tickers = cargar_archivos()
+modelo, diccionario_tickers = cargar_archivos_v2()
 
-# --- FUNCIÓN PARA DESCARGAR Y CALCULAR INDICADORES EN VIVO ---
-def obtener_datos_en_vivo(ticker_symbol):
-    # Descargamos los últimos 100 días para tener datos suficientes para las medias móviles
-    df = yf.download(ticker_symbol, period="100d", progress=False)
-    
-    # Calculamos MACD
-    ema12 = df['Close'].ewm(span=12, adjust=False).mean()
-    ema26 = df['Close'].ewm(span=26, adjust=False).mean()
-    macd_line = ema12 - ema26
-    macd_signal = macd_line.ewm(span=9, adjust=False).mean()
-    macd_hist = macd_line - macd_signal
-    
-    # Calculamos Z-Score (20 días)
-    sma20 = df['Close'].rolling(window=20).mean()
-    std20 = df['Close'].rolling(window=20).std()
-    z_score = (df['Close'] - sma20) / std20
-    
-    # Calculamos RSI (14 días) simple
-    delta = df['Close'].diff()
-    gain = delta.where(delta > 0, 0).rolling(window=14).mean()
-    loss = -delta.where(delta < 0, 0).rolling(window=14).mean()
-    rs = gain / loss
-    rsi = 100 - (100 / (1 + rs))
-    
-    # Extraemos solo la ÚLTIMA fila (el día de hoy)
-    hoy = df.iloc[-1]
-    
-    # Empaquetamos los datos que necesita el modelo
-    datos_hoy = {
-        'Volume': float(hoy['Volume']),
-        'Std_20': float(std20.iloc[-1]),
-        'MACD_Line': float(macd_line.iloc[-1]),
-        'MACD_Signal': float(macd_signal.iloc[-1]),
-        'MACD_Hist': float(macd_hist.iloc[-1]),
-        'RSI_14': float(rsi.iloc[-1]),
-        'Momentum_10': float(df['Close'].iloc[-1] - df['Close'].iloc[-11]),
-        'Vol_SMA_20': float(df['Volume'].rolling(20).mean().iloc[-1]),
-        'Vol_Ratio': float(hoy['Volume'] / df['Volume'].rolling(20).mean().iloc[-1]),
-        'Vol_Change': 0.0,
-        'High_Low_Spread': float(hoy['High'] - hoy['Low']),
-        'Z_Score_20': float(z_score.iloc[-1]),
-        'Above_SMA200': 1 if float(hoy['Close']) > float(df['Close'].mean()) else 0,
-        'Pct_From_High_50': float((hoy['Close'] - df['High'].rolling(50).max().iloc[-1]) / df['High'].rolling(50).max().iloc[-1])
-    }
-    return datos_hoy
 
-# --- INTERFAZ DE USUARIO ---
-st.title("🤖 Oráculo Financiero en Tiempo Real")
-st.markdown("Selecciona una empresa. La IA descargará los datos de Wall Street de hoy y hará la predicción instantáneamente.")
-st.divider()
 
-# Extraemos el texto puro del ticker (ej: "AAPL" en lugar de "Apple (AAPL)")
-# Para que yfinance sepa a quién buscar. Asumiendo que tu diccionario tiene claves como "AAPL"
-empresa_seleccionada = st.selectbox("Selecciona la Empresa", options=list(diccionario_tickers.keys()))
+# --- SIDEBAR ---
+with st.sidebar:
+    st.image("https://img.icons8.com/isometric/50/sales-performance.png", width=40)
+    st.subheader("Selección de Activos")
+    # Multiselect para múltiples activos
+    acciones_seleccionadas = st.multiselect(
+        "Comparar Acciones (Máx 10)", 
+        options=list(diccionario_tickers.keys()), 
+        default=[list(diccionario_tickers.keys())[0]] if diccionario_tickers else [],
+        max_selections=10
+    )
 
-if st.button('🚀 Analizar Mercado en Vivo'):
-    with st.spinner(f'Descargando datos financieros de {empresa_seleccionada} en tiempo real...'):
+    
+    st.markdown("---")
+    st.subheader("Modelo AI")
+    algoritmo = st.selectbox("Algoritmo de Proyección", options=["Ensemble (RF + XGB)", "XGBoost", "Random Forest"])
+    
+    st.markdown("---")
+    st.subheader("Proyección (Monte Carlo)")
+    horizonte = st.selectbox("Horizonte", options=["1 Día", "5 Días", "30 Días", "90 Días"], index=0)
+    dias_dict = {"1 Día": 1, "5 Días": 5, "30 Días": 30, "90 Días": 90}
+    horizonte_dias = dias_dict[horizonte]
+    
+    st.markdown("---")
+    st.subheader("Visualización")
+    tipo_grafico = st.radio("Tipo Gráfico", options=["Área", "Velas"], index=0)
+    mostrar_volumen = st.checkbox("Volumen", value=True)
+    mostrar_grid = st.checkbox("Ver Parámetros Clave", value=False)
+
+
+    st.markdown("---")
+    st.subheader("Stress Test (Monte Carlo)")
+    vol_mult = st.slider("Multiplicador de Volatilidad", 1.0, 3.0, 1.0, step=0.1)
+
+import sqlite3
+
+# --- DOWNLOAD DATA ---
+@st.cache_data
+def descargar_datos(ticker):
+    db_path = r"c:\Users\Farmatodo Kike\Documents\4Geeks Data science\Proyecto_Final\src\sp500_market_data.db"
+    try:
+        conn = sqlite3.connect(db_path)
+        query = f"SELECT * FROM sp500_daily_metrics WHERE Ticker = '{ticker}'"
+        df = pd.read_sql(query, conn)
+        conn.close()
+        
+        if not df.empty:
+            df['Date'] = pd.to_datetime(df['Date'])
+            df.set_index('Date', inplace=True)
+            df.sort_index(inplace=True)
+            # Ensure index has name 'Date'
+            df.index.name = 'Date'
+            return df
+    except Exception as e:
+         pass
+         
+    df = yf.download(ticker, period='2y', progress=False)
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+    return df
+
+st.title("⚡ Advanced Quant Trading Platform")
+
+# Selector de periodo global
+period = st.radio("Período de Visualización", ["1M", "3M", "6M", "YTD", "1A", "MAX"], index=4, horizontal=True)
+
+datos_dict = {}
+sim_dict = {}
+stats_dict = {}
+
+if not acciones_seleccionadas:
+    st.warning("Selecciona al menos una acción en el sidebar.")
+    st.stop()
+
+with st.spinner(f"Simulando proyecciones..."):
+    for ticker in acciones_seleccionadas:
+        df = descargar_datos(ticker)
+        if not df.empty and len(df) > 20:
+            from simulation import ejecutar_monte_carlo
+            df_s, stats_s = ejecutar_monte_carlo(df, dias_proyeccion=horizonte_dias, n_simulaciones=1000, vol_mult=vol_mult)
+            datos_dict[ticker] = df
+            sim_dict[ticker] = df_s
+            stats_dict[ticker] = stats_s
+
+if not datos_dict:
+    st.error("No se pudieron cargar datos suficientes para ninguna acción.")
+    st.stop()
+
+st.markdown("---")
+st.markdown("---")
+
+# 1. Row of Metrics for all Assets
+st.subheader("Resumen de Precios")
+cols_precio = st.columns(len(datos_dict))
+for idx, (tk, df) in enumerate(datos_dict.items()):
+    with cols_precio[idx]:
+        ultimo_cierre = df['Close'].iloc[-1]
+        cierre_anterior = df['Close'].iloc[-2]
+        cambio_abs = ultimo_cierre - cierre_anterior
+        cambio_pct = (cambio_abs / cierre_anterior) * 100
+        st.metric(label=f"{tk} Actual", value=f"${ultimo_cierre:.2f}", delta=f"{cambio_abs:.2f} ({cambio_pct:.2f}%)")
+
+st.markdown("---")
+
+st.markdown("---")
+
+# 3. Matriz de Correlación
+if len(datos_dict) > 1:
+    st.subheader("Matriz de Correlación (Pearson)")
+    df_combined = pd.DataFrame({tk: df['Close'] for tk, df in datos_dict.items()}).dropna()
+    if not df_combined.empty:
+        df_corr = df_combined.corr()
+        fig_corr = go.Figure(go.Heatmap(
+            z=df_corr.values, x=df_corr.columns, y=df_corr.index, colorscale='balance', zmin=-1, zmax=1,
+            text=np.round(df_corr.values, 2), texttemplate="%{text}"
+        ))
+        fig_corr.update_layout(template="plotly_dark", height=280, margin=dict(t=20, b=20, l=40, r=40))
+        st.plotly_chart(fig_corr, use_container_width=True)
+
+# 2. Unified Canvas for Returns (%)
+st.subheader(f"Evolución y Rendimiento Proyectado ({period})")
+
+if len(datos_dict) > 1 and tipo_grafico == "Velas":
+    st.warning("⚠️ El gráfico de VELAS no admite superposición normalizada (%). Utilizando gráfico de Área/Líneas para la comparación.")
+
+fig = go.Figure()
+
+for tk, df_data in datos_dict.items():
+    df_sim = sim_dict.get(tk, pd.DataFrame())
+    stats_sim = stats_dict.get(tk, {})
+    
+    dias_filtro = {"1M": 30, "3M": 90, "6M": 180, "YTD": 120, "1A": 252, "MAX": len(df_data)}
+    n_lookback = dias_filtro.get(period, 30)
+    df_plot = df_data.tail(n_lookback)
+    
+    if df_plot.empty: continue
+    
+    # Check for Single Asset Candlestick View
+    if len(datos_dict) == 1 and tipo_grafico == "Velas":
+        fig.add_trace(go.Candlestick(
+            x=df_plot.index,
+            open=df_plot['Open'], high=df_plot['High'], low=df_plot['Low'], close=df_plot['Close'],
+            name=f'{tk} Velas'
+        ))
+        
+        if not df_sim.empty and horizonte_dias > 1:
+            ultima_fecha = df_plot.index[-1]
+            fechas_futuras = pd.date_range(start=ultima_fecha + pd.Timedelta(days=1), periods=horizonte_dias, freq='B')
+            precios_finales = df_sim.iloc[-1]
+            media_final = precios_finales.mean()
+            idx_cercano = (precios_finales - media_final).abs().idxmin()
+            camino_realista = df_sim[idx_cercano].values[1:] 
+            
+            fig.add_trace(go.Scatter(
+                x=fechas_futuras, y=camino_realista, 
+                mode='lines', name=f'{tk} Proyección',
+                line=dict(width=2.5, dash='dot')
+            ))
+    else:
+        # Normalized Returns %
+        base_price = df_plot['Close'].iloc[0]
+        historico_pct = (df_plot['Close'] / base_price - 1) * 100
+        
+        fig.add_trace(go.Scatter(
+            x=df_plot.index, y=historico_pct, 
+            mode='lines', name=f'{tk} Histórico',
+            line=dict(width=2)
+        ))
+        
+        if not df_sim.empty and horizonte_dias > 1:
+            ultima_fecha = df_plot.index[-1]
+            fechas_futuras = pd.date_range(start=ultima_fecha + pd.Timedelta(days=1), periods=horizonte_dias, freq='B')
+            precios_finales = df_sim.iloc[-1]
+            media_final = precios_finales.mean()
+            idx_cercano = (precios_finales - media_final).abs().idxmin()
+            camino_realista = df_sim[idx_cercano].values[1:] 
+            camino_realista_pct = (camino_realista / base_price - 1) * 100
+            
+            fig.add_trace(go.Scatter(
+                x=fechas_futuras, y=camino_realista_pct, 
+                mode='lines', name=f'{tk} Proyección',
+                line=dict(width=2.5, dash='dot')
+            ))
+
+# Dynamic Y-Axis Title
+title_y = "Rendimiento Acumulado (%)" if len(datos_dict) > 1 or tipo_grafico != "Velas" else "Precio ($)"
+
+fig.update_layout(
+    template="plotly_dark", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+    margin=dict(l=40, r=40, t=20, b=40), xaxis=dict(showgrid=True, gridcolor="#21262d"),
+    yaxis=dict(showgrid=True, gridcolor="#21262d", title_text=title_y), height=500,
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+)
+
+st.plotly_chart(fig, use_container_width=True)
+
+if mostrar_grid:
+    st.divider()
+    st.subheader("Evolución de Parámetros Clave (Detalle Individual)")
+    asset_ind_view = st.selectbox("Inspeccionar parámetros de:", options=list(datos_dict.keys()))
+    
+    df_data_ind = datos_dict[asset_ind_view]
+    df_sim_ind = sim_dict.get(asset_ind_view, pd.DataFrame())
+    
+    dias_filtro_ind = {'1M': 30, '3M': 90, '6M': 180, 'YTD': 120, '1A': 252, 'MAX': len(df_data_ind)}
+    n_lookback = dias_filtro_ind.get(period, 30)
+    indicadores_data = calcular_indicadores_grid(df_data_ind, lookback_days=n_lookback)
+    
+    indicadores_futuros = {}
+    if not df_sim_ind.empty:
         try:
-            # 1. Conseguimos el código interno para el modelo (0, 1, 2...)
-            ticker_encoded = diccionario_tickers[empresa_seleccionada]
-            
-            # 2. Conseguimos los indicadores reales de hoy desde Yahoo Finance
-            # (Si tu diccionario tiene formato "Apple (AAPL)", tendrás que adaptar esto para extraer solo "AAPL")
-            datos_vivo = obtener_datos_en_vivo(empresa_seleccionada)
-            datos_vivo['Ticker_Encoded'] = ticker_encoded
-            
-            # 3. Convertimos a DataFrame para el modelo
-            datos_entrada = pd.DataFrame([datos_vivo])
-            
-            # 4. Predicción
-            prediccion = modelo.predict(datos_entrada)[0]
-            probabilidad = modelo.predict_proba(datos_entrada)[0]
-            
-            # 5. Mostrar resultados y los datos calculados para transparencia
-            st.subheader(f"🔮 Resultados para {empresa_seleccionada}")
-            
-            col1, col2, col3 = st.columns(3)
-            col1.metric("RSI Actual", f"{datos_vivo['RSI_14']:.2f}")
-            col2.metric("MACD Hist", f"{datos_vivo['MACD_Hist']:.2f}")
-            col3.metric("Z-Score", f"{datos_vivo['Z_Score_20']:.2f}")
-            
-            st.markdown("---")
-            if prediccion == 1:
-                st.success(f"**¡DÍA POSITIVO ESPERADO PARA MAÑANA! 🟢**")
-                st.write(f"Confianza del modelo: **{probabilidad[1]*100:.2f}%**")
-                st.balloons()
-            else:
-                st.error(f"**DÍA NEGATIVO ESPERADO PARA MAÑANA 🔴**")
-                st.write(f"Confianza del modelo: **{probabilidad[0]*100:.2f}%**")
-                
-        except Exception as e:
-            st.error("Hubo un error al descargar los datos de Yahoo Finance. Intenta con otra empresa.")
-            st.write(e)
+            precios_finales = df_sim_ind.iloc[-1]
+            media_final = precios_finales.mean()
+            idx_cercano = (precios_finales - media_final).abs().idxmin()
+            camino_realista = df_sim_ind[idx_cercano].values[1:] 
+            df_futuro = df_data_ind.copy()
+            promedio_volumen = df_data_ind['Volume'].mean()
+            fechas_futuras_ind = pd.date_range(start=df_data_ind.index[-1] + pd.Timedelta(days=1), periods=horizonte_dias, freq='B')
+            filas_f = []
+            for px in camino_realista: filas_f.append({'Open': px, 'High': px * 1.002, 'Low': px * 0.998, 'Close': px, 'Adj Close': px, 'Volume': promedio_volumen})
+            df_append = pd.DataFrame(filas_f, index=fechas_futuras_ind)
+            df_futuro = pd.concat([df_futuro, df_append])
+            indicadores_futuros = calcular_indicadores_grid(df_futuro, lookback_days=horizonte_dias)
+        except: pass
+        
+    if indicadores_data:
+        claves_15 = ["ADJ CLOSE", "HIGH", "LOW", "OPEN", "VOLUME", "VOL ADX", "VOL OBV", "VOL CMF", "VOL FI", "VOL MFI", "VOL NVI", "VOLAT BBH", "VOLAT BBL", "VOLAT KCH", "VOLAT KCL"]
+        st.markdown("<style>.metric-sub { display: flex; justify-content: space-between; font-size: 11px; margin-top: 8px; color: #8b949e; border-top: 1px solid #30363d; padding-top: 6px; } .sub-title { color: #8b949e; }</style>", unsafe_allow_html=True)
+        indicadores_filtrados = {k: indicadores_data[k] for k in claves_15 if k in indicadores_data}
+        cols = st.columns(4)
+        for i, (nombre, info) in enumerate(indicadores_filtrados.items()):
+            val_str = formatear_valor(info['val'])
+            pct_val = info.get('pct', 0.0)
+            pct_class = "pct-up" if pct_val > 0 else "pct-down" if pct_val < 0 else "pct-neutral"
+            pct_sign = "+" if pct_val > 0 else ""
+            fut_pct = 0.0; fut_class = "pct-neutral"; fut_sign = ""
+            if nombre in indicadores_futuros:
+                fut_val = indicadores_futuros[nombre]['val']               
+                if info['val'] != 0: fut_pct = ((fut_val - info['val']) / info['val']) * 100; fut_class = "pct-up" if fut_pct > 0 else "pct-down" if fut_pct < 0 else "pct-neutral"; fut_sign = "+" if fut_pct > 0 else ""
+            with cols[i % 4]:
+                st.markdown(f"""<div class='metric-card'><div class='metric-title'>{nombre}</div><div class='metric-value'>{val_str}</div><div class='metric-sub'><span><span class='sub-title'>Pasado:</span> <span class='{pct_class}'>{pct_sign}{pct_val:.1f}%</span></span><span><span class='sub-title'>Futuro:</span> <span class='{fut_class}'>{fut_sign}{fut_pct:.1f}%</span></span></div></div>""", unsafe_allow_html=True)
+                if (i + 1) % 4 == 0: st.markdown("<div style='margin-bottom: 20px;'></div>", unsafe_allow_html=True)
 
+    # 4. Backtesting Simple (Cruce de Medias)
+    st.divider()
+    st.subheader("Estrategia Backtesting: Cruce Medias 20/50")
+    
+    df_data_ind = df_data_ind.copy()
+    df_data_ind['MA20'] = df_data_ind['Close'].rolling(window=20).mean()
+    df_data_ind['MA50'] = df_data_ind['Close'].rolling(window=50).mean()
+    
+    df_data_ind['Signal'] = 0
+    df_data_ind.loc[df_data_ind['MA20'] > df_data_ind['MA50'], 'Signal'] = 1
+    df_data_ind['Retorno_Estrategia'] = df_data_ind['Close'].pct_change() * df_data_ind['Signal'].shift(1)
+    
+    rend_cum_est = (1 + df_data_ind['Retorno_Estrategia']).dropna().cumprod() - 1
+    rend_cum_bh = (1 + df_data_ind['Close'].pct_change()).dropna().cumprod() - 1
+
+    fig_backtest = go.Figure()
+    fig_backtest.add_trace(go.Scatter(x=rend_cum_est.index, y=rend_cum_est * 100, name="Estrategia (MA 20/50)", line=dict(color="#3fb950")))
+    fig_backtest.add_trace(go.Scatter(x=rend_cum_bh.index, y=rend_cum_bh * 100, name="Buy & Hold", line=dict(color="#8b949e", dash='dash')))
+    
+    fig_backtest.update_layout(template="plotly_dark", height=350, title_text="Rendimiento Acumulado (%)", yaxis=dict(title_text="%"))
+    st.plotly_chart(fig_backtest, use_container_width=True)
