@@ -4,59 +4,51 @@ import pandas as pd
 def ejecutar_monte_carlo(df, dias_proyeccion=30, n_simulaciones=1000, vol_mult=1.0):
     """
     Ejecuta una simulación de Monte Carlo basada en Movimiento Browniano Geométrico (GBM).
-    Retorna los caminos simulados y estadísticas de resumen.
+    Refinado para asegurar coherencia estadística bajo stress test.
     """
     if df.empty or len(df) < 20:
         return pd.DataFrame(), {}
         
     # Calcular retornos logarítmicos
-    precios = df['Close'] if 'Close' in df else df['Adj Close']
+    precios = df['Adj Close'] if 'Adj Close' in df.columns else df['Close']
     retornos_log = np.log(precios / precios.shift(1)).dropna()
     
-    # Parámetros del modelo
-    mu = retornos_log.mean() # Drift diario
-    var = retornos_log.var()  # Varianza diaria
-    sigma = retornos_log.std() * vol_mult # Volatilidad diaria Ajustada por Stress Test
-
+    # Parámetros base diarios
+    mu = retornos_log.mean() 
+    sigma_base = retornos_log.std()
     
-    # Drift ajustado por varianza
-    drift = mu - (0.5 * var)
+    # Aplicar Multiplicador de Volatilidad (Stress Test)
+    # Si aumentamos la volatilidad, el componente de drift (mu - 0.5 * sigma^2) 
+    # debe recalcularse para mantener la coherencia del modelo GBM.
+    sigma_adj = sigma_base * vol_mult
+    drift_adj = mu - (0.5 * (sigma_adj**2))
     
-    # Precio inicial (último precio conocido)
+    # Precio inicial
     S0 = precios.iloc[-1]
     
-    # Matriz de números aleatorios normales N(0,1)
-    # n_simulaciones caminos, dias_proyeccion pasos
-    shocks = np.random.normal(0, 1, (n_simulaciones, dias_proyeccion))
+    # Generación de caminos (Vectorizada para performance)
+    # W_t ~ N(0, 1)
+    shocks = np.random.normal(0, 1, (dias_proyeccion, n_simulaciones))
     
-    # Calcular retornos diarios simulados
-    # drift + sigma * shocks
-    retornos_simulados = np.exp(drift + sigma * shocks)
+    # Matriz de incrementos: exp((mu - 0.5*sigma^2) + sigma * Z)
+    incrementos = np.exp(drift_adj + sigma_adj * shocks)
     
-    # Crear matriz de precios simulados
-    precios_simulados = np.zeros((n_simulaciones, dias_proyeccion + 1))
-    precios_simulados[:, 0] = S0
+    # Concatenar precio inicial y calcular producto acumulado
+    caminos = np.vstack([np.full(n_simulaciones, S0), incrementos])
+    precios_simulados = np.cumprod(caminos, axis=0)
     
-    for t in range(1, dias_proyeccion + 1):
-        precios_simulados[:, t] = precios_simulados[:, t-1] * retornos_simulados[:, t-1]
-        
-    # Convertir a DataFrame para facilitar el uso en Plotly
-    # Transponer para que las filas sean los días (pasos) y columnas las simulaciones
-    df_sim = pd.DataFrame(precios_simulados.T)
+    # Convertir a DataFrame (Filas = Días, Columnas = Simulaciones)
+    df_sim = pd.DataFrame(precios_simulados)
     
-    # Estadísticas de resumen al final de la proyección (Última fila)
-    precios_finales = precios_simulados[:, -1]
-    mean_projection = np.mean(precios_finales)
-    
-    # Intervalo de confianza del 90% (Percentiles 5% y 95%)
-    lower_bound = np.percentile(precios_finales, 5)
-    upper_bound = np.percentile(precios_finales, 95)
-    
+    # Estadísticas de resumen
+    precios_finales = precios_simulados[-1, :]
     stats = {
         "current_price": S0,
-        "mean_projection": mean_projection,
-        "lower_bound": lower_bound,
-        "upper_bound": upper_bound,
+        "mean_projection": np.mean(precios_finales),
+        "median_projection": np.median(precios_finales),
+        "lower_bound": np.percentile(precios_finales, 5), # Escenario Pesimista
+        "upper_bound": np.percentile(precios_finales, 95), # Escenario Optimista
+        "std_dev": np.std(precios_finales),
         "n_simulaciones": n_simulaciones,
         "dias": dias_proyeccion
     }

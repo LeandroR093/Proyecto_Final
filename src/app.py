@@ -7,71 +7,137 @@ import numpy as np
 import plotly.graph_objects as go
 from indicators import calcular_indicadores_grid, formatear_valor
 from simulation import ejecutar_monte_carlo
+import textwrap
 
 st.set_page_config(page_title="Advanced Quant Trading Platform", page_icon="⚡", layout="wide")
 
 # --- CUSTOM CSS INJECTION ---
 st.markdown("""
 <style>
-    /* Dark Theme Setup */
-    body {
+    /* Premium Financial Dark Theme */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+    
+    html, body, [class*="css"] {
+        font-family: 'Inter', sans-serif;
         background-color: #0d1117;
-        color: #ffffff;
+        color: #f0f6fc;
     }
+    
+    .main {
+        background-color: #0d1117;
+    }
+    
     [data-testid="stSidebar"] {
         background-color: #161b22;
         border-right: 1px solid #30363d;
+        padding-top: 2rem;
     }
     
-    /* Metrics Grid */
-    .metric-grid {
+    /* Smart Cards Grid */
+    .smart-grid {
         display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 12px;
-        margin-top: 20px;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 16px;
+        margin: 24px 0;
     }
-    .metric-card {
+    
+    .smart-card {
         background-color: #161b22;
         border: 1px solid #30363d;
-        border-radius: 8px;
-        padding: 16px;
-        text-align: center;
-        transition: transform 0.2s;
+        border-radius: 12px;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        min-height: 160px;
+        transition: transform 0.2s ease, border-color 0.2s ease;
     }
-    .metric-card:hover {
-        transform: translateY(-2px);
-        border-color: #58a6ff;
-    }
-    .metric-title {
-        color: #8b949e;
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
-    .metric-value {
-        color: #f0f6fc;
-        font-size: 20px;
-        font-weight: 600;
-        margin-top: 6px;
-    }
-    .metric-pct {
-        font-size: 12px;
-        margin-top: 4px;
-    }
-    .pct-up { color: #3fb950; }
-    .pct-down { color: #f85149; }
-    .pct-neutral { color: #8b949e; }
     
-    /* Banner/Notification */
-    .banner {
-        background-color: rgba(56, 139, 253, 0.1);
-        border: 1px solid rgba(56, 139, 253, 0.4);
-        border-radius: 8px;
-        padding: 12px 16px;
-        margin: 16px 0;
+    .smart-card:hover {
+        border-color: #58a6ff;
+        transform: translateY(-2px);
+    }
+    
+    .card-header {
         display: flex;
         justify-content: space-between;
-        align-items: center;
+        align-items: flex-start;
+        margin-bottom: 12px;
+    }
+    
+    .card-title {
+        color: #8b949e;
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    
+    .card-main {
+        margin: 8px 0;
+    }
+    
+    .card-value {
+        font-size: 1.6rem;
+        font-weight: 700;
+        color: #f0f6fc;
+        font-family: 'JetBrains Mono', monospace;
+    }
+    
+    .card-variation {
+        font-size: 0.85rem;
+        font-weight: 600;
+        margin-top: 4px;
+    }
+    
+    .comparison-box {
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid rgba(48, 54, 61, 0.5);
+    }
+    
+    .comparison-item {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.75rem;
+        margin-bottom: 4px;
+    }
+    
+    .mini-indicator {
+        height: 4px;
+        width: 100%;
+        background: #30363d;
+        border-radius: 2px;
+        margin-top: 8px;
+        overflow: hidden;
+    }
+    
+    .indicator-bar {
+        height: 100%;
+        border-radius: 2px;
+    }
+    
+    /* Consistency & Alignment */
+    .stMarkdown { line-height: 1.6; }
+    .custom-divider { height: 1px; background: #30363d; margin: 24px 0; }
+    
+    /* Headers */
+    h1, h2, h3 {
+        font-weight: 700 !important;
+        letter-spacing: -0.02em !important;
+    }
+    
+    /* Buttons and Inputs */
+    .stButton>button {
+        border-radius: 8px;
+        font-weight: 600;
+    }
+    
+    /* Custom divider */
+    .custom-divider {
+        height: 1px;
+        background: linear-gradient(90deg, transparent, #30363d, transparent);
+        margin: 2rem 0;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -128,14 +194,15 @@ with st.sidebar:
     
     st.markdown("---")
     st.subheader("Proyección (Monte Carlo)")
-    horizonte = st.selectbox("Horizonte", options=["1 Día", "5 Días", "30 Días", "90 Días"], index=0)
-    dias_dict = {"1 Día": 1, "5 Días": 5, "30 Días": 30, "90 Días": 90}
+    horizonte = st.selectbox("Horizonte de Proyección", options=["1 día", "7 días", "14 días", "30 días", "60 días", "90 días"], index=3)
+    dias_dict = {"1 día": 1, "7 días": 7, "14 días": 14, "30 días": 30, "60 días": 60, "90 días": 90}
     horizonte_dias = dias_dict[horizonte]
     
     st.markdown("---")
     st.subheader("Visualización")
-    tipo_grafico = st.radio("Tipo Gráfico", options=["Área", "Velas"], index=0)
-    mostrar_volumen = st.checkbox("Volumen", value=True)
+    tipo_grafico = st.selectbox("Tipo de Visualización", options=["Línea", "Velas", "Área", "Barras"], index=2)
+    mostrar_volumen = st.checkbox("Mostrar Volumen", value=True)
+    mostrar_mc_paths = st.checkbox("Ver Rutas Monte Carlo", value=True)
     mostrar_grid = st.checkbox("Ver Parámetros Clave", value=False)
 
 
@@ -200,16 +267,22 @@ if not datos_dict:
 st.markdown("---")
 st.markdown("---")
 
-# 1. Row of Metrics for all Assets
-st.subheader("Resumen de Precios")
-cols_precio = st.columns(len(datos_dict))
-for idx, (tk, df) in enumerate(datos_dict.items()):
-    with cols_precio[idx]:
+# 1. Row of Quick Metrics (Safe Path Visualizer)
+st.subheader("Estado de Activos y Trayectoria Óptima")
+cols_precio = st.columns(min(len(datos_dict), 5)) if len(datos_dict) <= 5 else st.columns(5)
+for i, (tk, df) in enumerate(datos_dict.items()):
+    with cols_precio[i % 5]:
         ultimo_cierre = df['Close'].iloc[-1]
         cierre_anterior = df['Close'].iloc[-2]
-        cambio_abs = ultimo_cierre - cierre_anterior
-        cambio_pct = (cambio_abs / cierre_anterior) * 100
-        st.metric(label=f"{tk} Actual", value=f"${ultimo_cierre:.2f}", delta=f"{cambio_abs:.2f} ({cambio_pct:.2f}%)")
+        cambio_pct = ((ultimo_cierre - cierre_anterior) / cierre_anterior) * 100
+        color_class = "pct-up" if cambio_pct > 0 else "pct-down" if cambio_pct < 0 else "pct-neutral"
+        st.markdown(f"""
+        <div class="smart-card" style="min-height: 100px; padding: 16px; text-align: center;">
+            <div class="card-title">{tk}</div>
+            <div class="card-value" style="font-size: 1.2rem;">${ultimo_cierre:.2f}</div>
+            <div class="{color_class}" style="font-size: 0.75rem;">{"+" if cambio_pct > 0 else ""}{cambio_pct:.2f}%</div>
+        </div>
+        """, unsafe_allow_html=True)
 
 st.markdown("---")
 
@@ -228,15 +301,19 @@ if len(datos_dict) > 1:
         fig_corr.update_layout(template="plotly_dark", height=280, margin=dict(t=20, b=20, l=40, r=40))
         st.plotly_chart(fig_corr, use_container_width=True)
 
-# 2. Unified Canvas for Returns (%)
-st.subheader(f"Evolución y Rendimiento Proyectado ({period})")
+# 2. Unified Canvas
+st.subheader("Evolución y Rendimiento Proyectado")
 
-if len(datos_dict) > 1 and tipo_grafico == "Velas":
-    st.warning("⚠️ El gráfico de VELAS no admite superposición normalizada (%). Utilizando gráfico de Área/Líneas para la comparación.")
+# Si hay más de una acción, forzamos normalización %
+is_comparison = len(datos_dict) > 1
 
 fig = go.Figure()
 
-for tk, df_data in datos_dict.items():
+# Colores consistentes para los activos
+colores = ['#58a6ff', '#3fb950', '#f85149', '#d29922', '#bc8cff', '#ffa657', '#79c0ff', '#56d364', '#fa7970', '#e3b341']
+
+for i, (tk, df_data) in enumerate(datos_dict.items()):
+    color = colores[i % len(colores)]
     df_sim = sim_dict.get(tk, pd.DataFrame())
     stats_sim = stats_dict.get(tk, {})
     
@@ -246,111 +323,190 @@ for tk, df_data in datos_dict.items():
     
     if df_plot.empty: continue
     
-    # Check for Single Asset Candlestick View
-    if len(datos_dict) == 1 and tipo_grafico == "Velas":
-        fig.add_trace(go.Candlestick(
-            x=df_plot.index,
-            open=df_plot['Open'], high=df_plot['High'], low=df_plot['Low'], close=df_plot['Close'],
-            name=f'{tk} Velas'
-        ))
+    ultima_fecha = df_plot.index[-1]
+    fechas_futuras = pd.date_range(start=ultima_fecha + pd.Timedelta(days=1), periods=horizonte_dias + 1, freq='B')
+    # Ajustar fechas si hay desalineación (el primer punto de simulación es el S0)
+    fechas_completas_sim = pd.date_range(start=ultima_fecha, periods=horizonte_dias + 1, freq='B')
+
+    if not is_comparison:
+        # Modo Single Asset: Soporta todos los tipos de gráfico
+        if tipo_grafico == "Velas":
+            fig.add_trace(go.Candlestick(
+                x=df_plot.index, open=df_plot['Open'], high=df_plot['High'], 
+                low=df_plot['Low'], close=df_plot['Close'], name=f'{tk} Histórico'
+            ))
+        elif tipo_grafico == "Barras":
+            fig.add_trace(go.Ohlc(
+                x=df_plot.index, open=df_plot['Open'], high=df_plot['High'], 
+                low=df_plot['Low'], close=df_plot['Close'], name=f'{tk} Histórico'
+            ))
+        else: # Línea o Área
+            fill = 'tozeroy' if tipo_grafico == "Área" else None
+            fig.add_trace(go.Scatter(
+                x=df_plot.index, y=df_plot['Close'], mode='lines', name=f'{tk} Histórico',
+                line=dict(color=color, width=2), fill=fill
+            ))
         
-        if not df_sim.empty and horizonte_dias > 1:
-            ultima_fecha = df_plot.index[-1]
-            fechas_futuras = pd.date_range(start=ultima_fecha + pd.Timedelta(days=1), periods=horizonte_dias, freq='B')
-            precios_finales = df_sim.iloc[-1]
-            media_final = precios_finales.mean()
-            idx_cercano = (precios_finales - media_final).abs().idxmin()
-            camino_realista = df_sim[idx_cercano].values[1:] 
+        # --- PROYECCIÓN UNIVERSAL (Visibilidad en todos los modos) ---
+        if not df_sim.empty:
+            # Seleccionamos trayectoria estocástica representativa
+            ultimo_valor_mediana = df_sim.median(axis=1).iloc[-1]
+            distancias = (df_sim.iloc[-1] - ultimo_valor_mediana).abs()
+            col_representativa = distancias.idxmin()
+            ruta_jagged = df_sim[col_representativa]
+            
+            # Color distintivo (Dorado para el Futuro)
+            color_proj = "#FFD700" 
             
             fig.add_trace(go.Scatter(
-                x=fechas_futuras, y=camino_realista, 
-                mode='lines', name=f'{tk} Proyección',
-                line=dict(width=2.5, dash='dot')
+                x=fechas_completas_sim, y=ruta_jagged, mode='lines',
+                name=f'{tk} Proyección (Safe)', 
+                line=dict(color=color_proj, width=3, dash='dot'),
+                hovertemplate='%{y:.2f} (Escenario Probable)'
             ))
+            
+            # Sombras de Probabilidad (Sutiles)
+            p25 = df_sim.apply(lambda x: np.percentile(x, 25), axis=1)
+            p75 = df_sim.apply(lambda x: np.percentile(x, 75), axis=1)
+            fig.add_trace(go.Scatter(
+                x=fechas_completas_sim, y=p75, mode='lines', line=dict(width=0),
+                showlegend=False, hoverinfo='skip'
+            ))
+            fig.add_trace(go.Scatter(
+                x=fechas_completas_sim, y=p25, mode='lines', line=dict(width=0),
+                fill='tonexty', fillcolor='rgba(255, 215, 0, 0.05)',
+                name='Zona de Estabilidad'
+            ))
+
     else:
-        # Normalized Returns %
+        # Modo Comparación: Siempre Normalizado (%)
         base_price = df_plot['Close'].iloc[0]
-        historico_pct = (df_plot['Close'] / base_price - 1) * 100
+        hist_pct = (df_plot['Close'] / base_price - 1) * 100
         
         fig.add_trace(go.Scatter(
-            x=df_plot.index, y=historico_pct, 
-            mode='lines', name=f'{tk} Histórico',
-            line=dict(width=2)
+            x=df_plot.index, y=hist_pct, mode='lines', name=f'{tk}',
+            line=dict(color=color, width=2)
         ))
         
-        if not df_sim.empty and horizonte_dias > 1:
-            ultima_fecha = df_plot.index[-1]
-            fechas_futuras = pd.date_range(start=ultima_fecha + pd.Timedelta(days=1), periods=horizonte_dias, freq='B')
-            precios_finales = df_sim.iloc[-1]
-            media_final = precios_finales.mean()
-            idx_cercano = (precios_finales - media_final).abs().idxmin()
-            camino_realista = df_sim[idx_cercano].values[1:] 
-            camino_realista_pct = (camino_realista / base_price - 1) * 100
+        if not df_sim.empty:
+            # Ruta Jagged para comparación también
+            ultimo_valor_mediana = df_sim.median(axis=1).iloc[-1]
+            col_repr = (df_sim.iloc[-1] - ultimo_valor_mediana).abs().idxmin()
+            ruta_repr = df_sim[col_repr]
+            
+            sim_pct = (ruta_repr / base_price - 1) * 100
             
             fig.add_trace(go.Scatter(
-                x=fechas_futuras, y=camino_realista_pct, 
-                mode='lines', name=f'{tk} Proyección',
-                line=dict(width=2.5, dash='dot')
+                x=fechas_completas_sim, y=sim_pct, mode='lines',
+                name=f'{tk} Proyección', line=dict(color=color, width=2, dash='dot')
             ))
 
-# Dynamic Y-Axis Title
-title_y = "Rendimiento Acumulado (%)" if len(datos_dict) > 1 or tipo_grafico != "Velas" else "Precio ($)"
-
+# Layout final corregido
+title_y = "Rendimiento Normalizado (%)" if is_comparison else f"Precio {tk} ($)"
 fig.update_layout(
-    template="plotly_dark", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-    margin=dict(l=40, r=40, t=20, b=40), xaxis=dict(showgrid=True, gridcolor="#21262d"),
-    yaxis=dict(showgrid=True, gridcolor="#21262d", title_text=title_y), height=500,
-    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    template="plotly_dark", hovermode="x unified",
+    margin=dict(l=40, r=40, t=10, b=40),
+    xaxis=dict(showgrid=True, gridcolor="#21262d", rangeslider=dict(visible=False)),
+    yaxis=dict(showgrid=True, gridcolor="#21262d", title_text=title_y),
+    height=600, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
 )
 
 st.plotly_chart(fig, use_container_width=True)
 
+# 3. Borrar comparación transversal (Eliminado por Requerimiento Fase 2)
+
 if mostrar_grid:
     st.divider()
-    st.subheader("Evolución de Parámetros Clave (Detalle Individual)")
-    asset_ind_view = st.selectbox("Inspeccionar parámetros de:", options=list(datos_dict.keys()))
+    st.subheader("Análisis de Parámetros Clave")
     
-    df_data_ind = datos_dict[asset_ind_view]
-    df_sim_ind = sim_dict.get(asset_ind_view, pd.DataFrame())
-    
-    dias_filtro_ind = {'1M': 30, '3M': 90, '6M': 180, 'YTD': 120, '1A': 252, 'MAX': len(df_data_ind)}
-    n_lookback = dias_filtro_ind.get(period, 30)
-    indicadores_data = calcular_indicadores_grid(df_data_ind, lookback_days=n_lookback)
-    
-    indicadores_futuros = {}
-    if not df_sim_ind.empty:
-        try:
-            precios_finales = df_sim_ind.iloc[-1]
-            media_final = precios_finales.mean()
-            idx_cercano = (precios_finales - media_final).abs().idxmin()
-            camino_realista = df_sim_ind[idx_cercano].values[1:] 
-            df_futuro = df_data_ind.copy()
-            promedio_volumen = df_data_ind['Volume'].mean()
-            fechas_futuras_ind = pd.date_range(start=df_data_ind.index[-1] + pd.Timedelta(days=1), periods=horizonte_dias, freq='B')
-            filas_f = []
-            for px in camino_realista: filas_f.append({'Open': px, 'High': px * 1.002, 'Low': px * 0.998, 'Close': px, 'Adj Close': px, 'Volume': promedio_volumen})
-            df_append = pd.DataFrame(filas_f, index=fechas_futuras_ind)
-            df_futuro = pd.concat([df_futuro, df_append])
-            indicadores_futuros = calcular_indicadores_grid(df_futuro, lookback_days=horizonte_dias)
-        except: pass
+    # Definimos el activo principal para el backtest (el primero seleccionado)
+    primero = acciones_seleccionadas[0]
+    df_data_ind = datos_dict[primero]
+
+    # --- REFACTOR: Smart Cards Unificadas (Fase 4) ---
+    master_indicadores = {}
+    for tk_id, df_tk in datos_dict.items():
+        # Histórico
+        dias_hist = {"1M": 30, "3M": 90, "6M": 180, "YTD": 120, "1A": 252, "MAX": len(df_tk)}.get(period, 30)
+        ind_hist = calcular_indicadores_grid(df_tk, lookback_days=dias_hist)
         
-    if indicadores_data:
-        claves_15 = ["ADJ CLOSE", "HIGH", "LOW", "OPEN", "VOLUME", "VOL ADX", "VOL OBV", "VOL CMF", "VOL FI", "VOL MFI", "VOL NVI", "VOLAT BBH", "VOLAT BBL", "VOLAT KCH", "VOLAT KCL"]
-        st.markdown("<style>.metric-sub { display: flex; justify-content: space-between; font-size: 11px; margin-top: 8px; color: #8b949e; border-top: 1px solid #30363d; padding-top: 6px; } .sub-title { color: #8b949e; }</style>", unsafe_allow_html=True)
-        indicadores_filtrados = {k: indicadores_data[k] for k in claves_15 if k in indicadores_data}
-        cols = st.columns(4)
-        for i, (nombre, info) in enumerate(indicadores_filtrados.items()):
-            val_str = formatear_valor(info['val'])
-            pct_val = info.get('pct', 0.0)
-            pct_class = "pct-up" if pct_val > 0 else "pct-down" if pct_val < 0 else "pct-neutral"
-            pct_sign = "+" if pct_val > 0 else ""
-            fut_pct = 0.0; fut_class = "pct-neutral"; fut_sign = ""
-            if nombre in indicadores_futuros:
-                fut_val = indicadores_futuros[nombre]['val']               
-                if info['val'] != 0: fut_pct = ((fut_val - info['val']) / info['val']) * 100; fut_class = "pct-up" if fut_pct > 0 else "pct-down" if fut_pct < 0 else "pct-neutral"; fut_sign = "+" if fut_pct > 0 else ""
-            with cols[i % 4]:
-                st.markdown(f"""<div class='metric-card'><div class='metric-title'>{nombre}</div><div class='metric-value'>{val_str}</div><div class='metric-sub'><span><span class='sub-title'>Pasado:</span> <span class='{pct_class}'>{pct_sign}{pct_val:.1f}%</span></span><span><span class='sub-title'>Futuro:</span> <span class='{fut_class}'>{fut_sign}{fut_pct:.1f}%</span></span></div></div>""", unsafe_allow_html=True)
-                if (i + 1) % 4 == 0: st.markdown("<div style='margin-bottom: 20px;'></div>", unsafe_allow_html=True)
+        # Futuro
+        df_sim_tk = sim_dict.get(tk_id, pd.DataFrame())
+        ind_fut = {}
+        if not df_sim_tk.empty:
+            try:
+                # Usamos la TRAYECTORIA REAL (Same as chart) para coherencia
+                ultimo_val_med = df_sim_tk.median(axis=1).iloc[-1]
+                idx_repr = (df_sim_tk.iloc[-1] - ultimo_val_med).abs().idxmin()
+                camino_repr = df_sim_tk[idx_repr].values
+                
+                df_fut_tk = df_tk.copy()
+                prom_vol = df_tk['Volume'].mean()
+                fechas_f_tk = pd.date_range(start=df_tk.index[-1] + pd.Timedelta(days=1), periods=horizonte_dias + 1, freq='B')
+                
+                filas_fut = []
+                for px in camino_repr[1:]:
+                    spread = df_tk['High'].mean() / df_tk['Low'].mean() if not df_tk.empty else 1.005
+                    filas_fut.append({'Open': px, 'High': px * spread, 'Low': px / spread, 'Close': px, 'Adj Close': px, 'Volume': prom_vol})
+                
+                df_append_tk = pd.DataFrame(filas_fut, index=fechas_f_tk[1:])
+                df_total_tk = pd.concat([df_fut_tk, df_append_tk])
+                ind_fut = calcular_indicadores_grid(df_total_tk, lookback_days=horizonte_dias)
+            except: pass
+            
+        master_indicadores[tk_id] = {'hist': ind_hist, 'fut': ind_fut}
+
+    categorias = {
+        "📊 Precio": ["ADJ CLOSE", "HIGH", "LOW", "OPEN"],
+        "🔄 Volumen": ["VOLUME", "Vol ADX", "Vol OBV", "Vol CMF", "Vol FI", "Vol MFI", "Vol NVI"],
+        "📉 Volatilidad": ["Volat BBH", "Volat BBL", "Volat KCH", "Volat KCL"]
+    }
+
+    # Rendimiento unificado por métrica
+    for cat_nombre, metricas_cat in categorias.items():
+        st.markdown(f"#### {cat_nombre}")
+        cols_cat = st.columns(min(len(metricas_cat), 3)) # 3 columnas para dar más espacio a las tarjetas unificadas
+        
+        for i, m in enumerate(metricas_cat):
+            with cols_cat[i % 3]:
+                html_assets = ""
+                for tk_id in acciones_seleccionadas:
+                    if tk_id in master_indicadores and m in master_indicadores[tk_id]['hist']:
+                        data_h = master_indicadores[tk_id]['hist'][m]
+                        data_f = master_indicadores[tk_id]['fut'].get(m, {})
+                        
+                        val_now = data_h['val']
+                        pct_p = data_h.get('pct', 0.0)
+                        
+                        val_f = data_f.get('val', val_now)
+                        pct_f = ((val_f - val_now) / val_now * 100) if val_now != 0 else 0
+                        
+                        c_p = "pct-up" if pct_p > 0 else "pct-down"
+                        c_f = "pct-up" if pct_f > 0 else "pct-down"
+                        
+                        # Barra de intensidad (basada en el activo principal si hay duda, o en el actual)
+                        bar_w = min(abs(pct_p)*5, 100)
+                        bar_c = "#3fb950" if pct_p > 0 else "#f85149"
+
+                        html_assets += f'<div class="asset-row" style="padding: 8px 0; border-bottom: 1px solid #30363d;">'
+                        html_assets += f'<div style="display: flex; justify-content: space-between; align-items: center;">'
+                        html_assets += f'<span style="font-weight: 700; color: #58a6ff; font-size: 0.85rem;">{tk_id}</span>'
+                        html_assets += f'<span style="font-size: 1rem; font-weight: 500;">{formatear_valor(val_now)}</span>'
+                        html_assets += f'</div>'
+                        html_assets += f'<div style="display: flex; justify-content: space-between; font-size: 0.7rem; margin-top: 2px;">'
+                        html_assets += f'<span class="{c_p}">Hist: {pct_p:+.1f}%</span>'
+                        html_assets += f'<span class="{c_f}" style="color: #FFD700 !important; font-weight: 700;">Proj: {pct_f:+.1f}%</span>'
+                        html_assets += f'</div>'
+                        html_assets += f'<div style="height: 2px; background: #21262d; border-radius: 1px; margin-top: 4px;">'
+                        html_assets += f'<div style="width: {bar_w}%; height: 100%; background: {bar_c}; border-radius: 1px;"></div>'
+                        html_assets += f'</div></div>'
+                
+                full_card_html = f'<div class="smart-card" style="margin-bottom: 20px; border-top: 2px solid #58a6ff; background: #161b22; border-radius: 6px; padding: 10px;">'
+                full_card_html += f'<div style="font-size: 0.9rem; font-weight: 600; color: #8b949e; margin-bottom: 8px; text-transform: uppercase;">{m}</div>'
+                full_card_html += html_assets
+                full_card_html += '</div>'
+                
+                st.markdown(full_card_html, unsafe_allow_html=True)
 
     # 4. Backtesting Simple (Cruce de Medias)
     st.divider()
