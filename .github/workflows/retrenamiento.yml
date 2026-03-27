@@ -33,7 +33,7 @@ jobs:
       run: |
         git config --global user.name "Robot de Retrenamiento"
         git config --global user.email "robot@oraculo.com"
-        git add models/modelo_financiero_prueba_xgb.pkl
+        git add models/oraculo_financiero2_xgb.pkl
         # El "|| true" al final evita que el proceso muera si el modelo no cambió
         git commit -m "🤖 Modelo reentrenado y actualizado" || true
         git push

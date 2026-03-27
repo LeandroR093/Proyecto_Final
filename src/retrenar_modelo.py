@@ -97,7 +97,7 @@ modelo_xgb = xgb.XGBClassifier(learning_rate=0.1, max_depth=7, n_estimators=200,
 modelo_xgb.fit(X, y)
 
 # --- PASO 5: GUARDAR ---
-ruta_modelo = 'models/modelo_financiero_prueba_xgb.pkl'
+ruta_modelo = 'models/oraculo_financiero2_xgb.pkl'
 with open(ruta_modelo, 'wb') as archivo:
     pickle.dump(modelo_xgb, archivo)
 
