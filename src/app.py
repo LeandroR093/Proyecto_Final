@@ -9,7 +9,7 @@ from indicators import calcular_indicadores_grid, formatear_valor
 from simulation import ejecutar_monte_carlo
 import textwrap
 
-st.set_page_config(page_title="Advanced Quant Trading Platform", page_icon="⚡", layout="wide")
+st.set_page_config(page_title="Advanced Quant Trading Platform", page_icon="📈", layout="wide")
 
 # --- CUSTOM CSS INJECTION ---
 st.markdown("""
@@ -36,7 +36,7 @@ st.markdown("""
     /* Smart Cards Grid */
     .smart-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        grid-template-columns: repeat(4, 1fr);
         gap: 16px;
         margin: 24px 0;
     }
@@ -177,7 +177,6 @@ modelo, diccionario_tickers = cargar_archivos_v2()
 
 # --- SIDEBAR ---
 with st.sidebar:
-    st.image("https://img.icons8.com/isometric/50/sales-performance.png", width=40)
     st.subheader("Selección de Activos")
     # Multiselect para múltiples activos
     acciones_seleccionadas = st.multiselect(
@@ -193,7 +192,7 @@ with st.sidebar:
     algoritmo = st.selectbox("Algoritmo de Proyección", options=["Ensemble (RF + XGB)", "XGBoost", "Random Forest"])
     
     st.markdown("---")
-    st.subheader("Proyección (Monte Carlo)")
+    st.subheader("Proyección")
     horizonte = st.selectbox("Horizonte de Proyección", options=["1 día", "7 días", "14 días", "30 días", "60 días", "90 días"], index=3)
     dias_dict = {"1 día": 1, "7 días": 7, "14 días": 14, "30 días": 30, "60 días": 60, "90 días": 90}
     horizonte_dias = dias_dict[horizonte]
@@ -202,12 +201,12 @@ with st.sidebar:
     st.subheader("Visualización")
     tipo_grafico = st.selectbox("Tipo de Visualización", options=["Línea", "Velas", "Área", "Barras"], index=2)
     mostrar_volumen = st.checkbox("Mostrar Volumen", value=True)
-    mostrar_mc_paths = st.checkbox("Ver Rutas Monte Carlo", value=True)
+    mostrar_mc_paths = st.checkbox("Ver Rutas Proyectadas", value=True)
     mostrar_grid = st.checkbox("Ver Parámetros Clave", value=False)
 
 
     st.markdown("---")
-    st.subheader("Stress Test (Monte Carlo)")
+    st.subheader("Stress Test")
     vol_mult = st.slider("Multiplicador de Volatilidad", 1.0, 3.0, 1.0, step=0.1)
 
 import sqlite3
@@ -237,7 +236,7 @@ def descargar_datos(ticker):
         df.columns = df.columns.get_level_values(0)
     return df
 
-st.title("⚡ Advanced Quant Trading Platform")
+st.title("Advanced Quant Trading Platform")
 
 # Selector de periodo global
 period = st.radio("Período de Visualización", ["1M", "3M", "6M", "YTD", "1A", "MAX"], index=4, horizontal=True)
@@ -250,12 +249,20 @@ if not acciones_seleccionadas:
     st.warning("Selecciona al menos una acción en el sidebar.")
     st.stop()
 
+# --- CACHED SIMULATION ---
+@st.cache_data
+def obtener_simulacion_cache(ticker, d_proyeccion, v_mult):
+    # n_sim is fixed at 1000 for stability
+    df_mini = descargar_datos(ticker)
+    if not df_mini.empty and len(df_mini) > 20:
+        return ejecutar_monte_carlo(df_mini, dias_proyeccion=d_proyeccion, n_simulaciones=1000, vol_mult=v_mult)
+    return pd.DataFrame(), {}
+
 with st.spinner(f"Simulando proyecciones..."):
     for ticker in acciones_seleccionadas:
         df = descargar_datos(ticker)
         if not df.empty and len(df) > 20:
-            from simulation import ejecutar_monte_carlo
-            df_s, stats_s = ejecutar_monte_carlo(df, dias_proyeccion=horizonte_dias, n_simulaciones=1000, vol_mult=vol_mult)
+            df_s, stats_s = obtener_simulacion_cache(ticker, horizonte_dias, vol_mult)
             datos_dict[ticker] = df
             sim_dict[ticker] = df_s
             stats_dict[ticker] = stats_s
@@ -457,18 +464,18 @@ if mostrar_grid:
         master_indicadores[tk_id] = {'hist': ind_hist, 'fut': ind_fut}
 
     categorias = {
-        "📊 Precio": ["ADJ CLOSE", "HIGH", "LOW", "OPEN"],
-        "🔄 Volumen": ["VOLUME", "Vol ADX", "Vol OBV", "Vol CMF", "Vol FI", "Vol MFI", "Vol NVI"],
-        "📉 Volatilidad": ["Volat BBH", "Volat BBL", "Volat KCH", "Volat KCL"]
+        "Precio": ["ADJ CLOSE", "HIGH", "LOW", "OPEN"],
+        "Volumen": ["VOLUME", "Vol ADX", "Vol OBV", "Vol CMF", "Vol FI", "Vol MFI", "Vol NVI"],
+        "Volatilidad": ["Volat BBH", "Volat BBL", "Volat KCH", "Volat KCL"]
     }
 
     # Rendimiento unificado por métrica
     for cat_nombre, metricas_cat in categorias.items():
         st.markdown(f"#### {cat_nombre}")
-        cols_cat = st.columns(min(len(metricas_cat), 3)) # 3 columnas para dar más espacio a las tarjetas unificadas
+        cols_cat = st.columns(4) # 4 columnas para alineación perfecta
         
         for i, m in enumerate(metricas_cat):
-            with cols_cat[i % 3]:
+            with cols_cat[i % 4]:
                 html_assets = ""
                 for tk_id in acciones_seleccionadas:
                     if tk_id in master_indicadores and m in master_indicadores[tk_id]['hist']:

@@ -3,8 +3,8 @@ import pandas as pd
 
 def ejecutar_monte_carlo(df, dias_proyeccion=30, n_simulaciones=1000, vol_mult=1.0):
     """
-    Ejecuta una simulación de Monte Carlo basada en Movimiento Browniano Geométrico (GBM).
-    Refinado para asegurar coherencia estadística bajo stress test.
+    Ejecuta una simulación estocástica basada en Movimiento Browniano Geométrico (GBM).
+    Refinado para asegurar coherencia estadística y reproductibilidad.
     """
     if df.empty or len(df) < 20:
         return pd.DataFrame(), {}
@@ -27,8 +27,9 @@ def ejecutar_monte_carlo(df, dias_proyeccion=30, n_simulaciones=1000, vol_mult=1
     S0 = precios.iloc[-1]
     
     # Generación de caminos (Vectorizada para performance)
-    # W_t ~ N(0, 1)
-    shocks = np.random.normal(0, 1, (dias_proyeccion, n_simulaciones))
+    # W_t ~ N(0, 1) con semilla fija para determinismo
+    rng = np.random.default_rng(42)
+    shocks = rng.normal(0, 1, (dias_proyeccion, n_simulaciones))
     
     # Matriz de incrementos: exp((mu - 0.5*sigma^2) + sigma * Z)
     incrementos = np.exp(drift_adj + sigma_adj * shocks)
