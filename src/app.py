@@ -187,6 +187,11 @@ with st.sidebar:
     )
 
     
+<<<<<<< HEAD
+=======
+   
+    
+>>>>>>> 36b02caef7b95bdc81eeffa8a89f0f4f6162e4f0
     st.markdown("---")
     st.subheader("Proyección")
     horizonte = st.selectbox("Horizonte de Proyección", options=["1 día", "7 días", "14 días", "30 días", "60 días", "90 días"], index=3)
