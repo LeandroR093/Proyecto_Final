@@ -188,10 +188,6 @@ with st.sidebar:
 
     
     st.markdown("---")
-    st.subheader("Modelo AI")
-    algoritmo = st.selectbox("Algoritmo de Proyección", options=["Ensemble (RF + XGB)", "XGBoost", "Random Forest"])
-    
-    st.markdown("---")
     st.subheader("Proyección")
     horizonte = st.selectbox("Horizonte de Proyección", options=["1 día", "7 días", "14 días", "30 días", "60 días", "90 días"], index=3)
     dias_dict = {"1 día": 1, "7 días": 7, "14 días": 14, "30 días": 30, "60 días": 60, "90 días": 90}
@@ -206,7 +202,6 @@ with st.sidebar:
 
 
     st.markdown("---")
-    st.subheader("Stress Test")
     vol_mult = st.slider("Multiplicador de Volatilidad", 1.0, 3.0, 1.0, step=0.1)
 
 import sqlite3
@@ -252,13 +247,14 @@ if not acciones_seleccionadas:
 # --- CACHED SIMULATION ---
 @st.cache_data
 def obtener_simulacion_cache(ticker, d_proyeccion, v_mult):
-    # n_sim is fixed at 1000 for stability
     df_mini = descargar_datos(ticker)
     if not df_mini.empty and len(df_mini) > 20:
         return ejecutar_monte_carlo(df_mini, dias_proyeccion=d_proyeccion, n_simulaciones=1000, vol_mult=v_mult)
     return pd.DataFrame(), {}
 
-with st.spinner(f"Simulando proyecciones..."):
+
+# --- MAIN LOGIC ---
+with st.spinner(f"Generando inteligencia predictiva..."):
     for ticker in acciones_seleccionadas:
         df = descargar_datos(ticker)
         if not df.empty and len(df) > 20:
@@ -272,19 +268,46 @@ if not datos_dict:
     st.stop()
 
 st.markdown("---")
+
+# 1. Copiloto Inteligente & Insights
+st.subheader("Copiloto de Inteligencia Financiera")
+for i, (tk, stats) in enumerate(stats_dict.items()):
+    if i % 4 == 0:
+        cols_insight = st.columns(min(len(stats_dict) - i, 4), gap="medium")
+    
+    with cols_insight[i % 4]:
+        score = stats.get('score_confianza', 0.0)
+        driver = stats.get('driver_principal', 'N/A')
+        sensi = stats.get('sensibilidad', 1.0)
+        status = "Alto" if score > 80 else "Medio" if score > 50 else "Bajo"
+        color = "#3fb950" if status == "Alto" else "#d29922" if status == "Medio" else "#f85149"
+        
+        st.markdown(f"""
+        <div class="smart-card" style="border-left: 4px solid {color}; padding: 16px; margin-bottom: 16px;">
+            <div class="card-title">{tk} | Score de Confianza</div>
+            <div class="card-value" style="color: {color};">{score:.0f}% ({status})</div>
+            <div style="font-size: 0.8rem; margin-top: 8px;">
+                <b>Driver Principal:</b> {driver}<br>
+                <b>Sensibilidad:</b> {sensi:.1f}x
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
 st.markdown("---")
 
-# 1. Row of Quick Metrics (Safe Path Visualizer)
-st.subheader("Estado de Activos y Trayectoria Óptima")
-cols_precio = st.columns(min(len(datos_dict), 5)) if len(datos_dict) <= 5 else st.columns(5)
+# 2. Row of Quick Metrics
+st.subheader("Estado de Activos")
 for i, (tk, df) in enumerate(datos_dict.items()):
+    if i % 5 == 0:
+        cols_precio = st.columns(min(len(datos_dict) - i, 5), gap="medium")
+    
     with cols_precio[i % 5]:
         ultimo_cierre = df['Close'].iloc[-1]
         cierre_anterior = df['Close'].iloc[-2]
         cambio_pct = ((ultimo_cierre - cierre_anterior) / cierre_anterior) * 100
         color_class = "pct-up" if cambio_pct > 0 else "pct-down" if cambio_pct < 0 else "pct-neutral"
         st.markdown(f"""
-        <div class="smart-card" style="min-height: 100px; padding: 16px; text-align: center;">
+        <div class="smart-card" style="min-height: 100px; padding: 16px; text-align: center; margin-bottom: 16px;">
             <div class="card-title">{tk}</div>
             <div class="card-value" style="font-size: 1.2rem;">${ultimo_cierre:.2f}</div>
             <div class="{color_class}" style="font-size: 0.75rem;">{"+" if cambio_pct > 0 else ""}{cambio_pct:.2f}%</div>
@@ -372,18 +395,22 @@ for i, (tk, df_data) in enumerate(datos_dict.items()):
                 hovertemplate='%{y:.2f} (Escenario Probable)'
             ))
             
-            # Sombras de Probabilidad (Sutiles)
-            p25 = df_sim.apply(lambda x: np.percentile(x, 25), axis=1)
-            p75 = df_sim.apply(lambda x: np.percentile(x, 75), axis=1)
+            # ESCENARIOS DINÁMICOS P10/P90 (Divine Level)
+            p10_line = df_sim.apply(lambda x: np.percentile(x, 10), axis=1)
+            p90_line = df_sim.apply(lambda x: np.percentile(x, 90), axis=1)
+            
             fig.add_trace(go.Scatter(
-                x=fechas_completas_sim, y=p75, mode='lines', line=dict(width=0),
-                showlegend=False, hoverinfo='skip'
+                x=fechas_completas_sim, y=p90_line, mode='lines', 
+                line=dict(color='rgba(63, 185, 80, 0.4)', width=1, dash='dot'),
+                name='Optimista (P90)'
             ))
             fig.add_trace(go.Scatter(
-                x=fechas_completas_sim, y=p25, mode='lines', line=dict(width=0),
-                fill='tonexty', fillcolor='rgba(255, 215, 0, 0.05)',
-                name='Zona de Estabilidad'
+                x=fechas_completas_sim, y=p10_line, mode='lines', 
+                line=dict(color='rgba(248, 81, 73, 0.4)', width=1, dash='dot'),
+                name='Pesimista (P10)',
+                fill='tonexty', fillcolor='rgba(88, 166, 255, 0.05)'
             ))
+            
 
     else:
         # Modo Comparación: Siempre Normalizado (%)
@@ -519,20 +546,50 @@ if mostrar_grid:
     st.divider()
     st.subheader("Estrategia Backtesting: Cruce Medias 20/50")
     
-    df_data_ind = df_data_ind.copy()
-    df_data_ind['MA20'] = df_data_ind['Close'].rolling(window=20).mean()
-    df_data_ind['MA50'] = df_data_ind['Close'].rolling(window=50).mean()
-    
-    df_data_ind['Signal'] = 0
-    df_data_ind.loc[df_data_ind['MA20'] > df_data_ind['MA50'], 'Signal'] = 1
-    df_data_ind['Retorno_Estrategia'] = df_data_ind['Close'].pct_change() * df_data_ind['Signal'].shift(1)
-    
-    rend_cum_est = (1 + df_data_ind['Retorno_Estrategia']).dropna().cumprod() - 1
-    rend_cum_bh = (1 + df_data_ind['Close'].pct_change()).dropna().cumprod() - 1
-
     fig_backtest = go.Figure()
-    fig_backtest.add_trace(go.Scatter(x=rend_cum_est.index, y=rend_cum_est * 100, name="Estrategia (MA 20/50)", line=dict(color="#3fb950")))
-    fig_backtest.add_trace(go.Scatter(x=rend_cum_bh.index, y=rend_cum_bh * 100, name="Buy & Hold", line=dict(color="#8b949e", dash='dash')))
-    
-    fig_backtest.update_layout(template="plotly_dark", height=350, title_text="Rendimiento Acumulado (%)", yaxis=dict(title_text="%"))
+    colores_bt = ['#3fb950', '#58a6ff', '#f85149', '#d29922', '#bc8cff', '#ffa657', '#79c0ff', '#56d364', '#fa7970', '#e3b341']
+
+    for i, (tk, df_bt) in enumerate(datos_dict.items()):
+        color = colores_bt[i % len(colores_bt)]
+        # Use a copy to avoid SettingWithCopyWarning or affecting original data
+        df_bt_copy = df_bt.copy()
+        df_bt_copy['MA20'] = df_bt_copy['Close'].rolling(window=20).mean()
+        df_bt_copy['MA50'] = df_bt_copy['Close'].rolling(window=50).mean()
+        
+        df_bt_copy['Signal'] = 0
+        df_bt_copy.loc[df_bt_copy['MA20'] > df_bt_copy['MA50'], 'Signal'] = 1
+        df_bt_copy['Retorno_Estrategia'] = df_bt_copy['Close'].pct_change() * df_bt_copy['Signal'].shift(1)
+        
+        rend_cum_est = (1 + df_bt_copy['Retorno_Estrategia']).dropna().cumprod() - 1
+        
+        fig_backtest.add_trace(go.Scatter(
+            x=rend_cum_est.index, y=rend_cum_est * 100, 
+            name=f"Estrategia {tk}", 
+            line=dict(color=color, width=2)
+        ))
+        
+        # Opcional: Mostrar Buy & Hold del primero como referencia gris
+        if i == 0 and len(datos_dict) > 1:
+            rend_cum_bh = (1 + df_bt_copy['Close'].pct_change()).dropna().cumprod() - 1
+            fig_backtest.add_trace(go.Scatter(
+                x=rend_cum_bh.index, y=rend_cum_bh * 100, 
+                name=f"B&H {tk} (Ref)", 
+                line=dict(color="#8b949e", dash='dash', width=1)
+            ))
+        elif len(datos_dict) == 1:
+            # Si solo hay uno, mostramos su B&H normal
+            rend_cum_bh = (1 + df_bt_copy['Close'].pct_change()).dropna().cumprod() - 1
+            fig_backtest.add_trace(go.Scatter(
+                x=rend_cum_bh.index, y=rend_cum_bh * 100, 
+                name=f"Buy & Hold {tk}", 
+                line=dict(color="#8b949e", dash='dash')
+            ))
+
+    fig_backtest.update_layout(
+        template="plotly_dark", height=400, 
+        title_text="Rendimiento Acumulado de Estrategia (%)", 
+        yaxis=dict(title_text="%"),
+        hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
     st.plotly_chart(fig_backtest, use_container_width=True)

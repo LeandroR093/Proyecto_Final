@@ -60,23 +60,33 @@ def calcular_indicadores_grid(df, lookback_days=1):
     safe_calc("Vol NVI", lambda: ta.volume.NegativeVolumeIndexIndicator(df_ta['Close'], df_ta['Volume']).negative_volume_index())
 
     # 3. Parámetros de Volatilidad
+    def calc_volat(key_h, key_l, series_h, series_l):
+        try:
+            val_h = series_h.iloc[-1]
+            val_l = series_l.iloc[-1]
+            
+            prev_h = series_h.iloc[-1 - lookback_days] if len(series_h) > lookback_days else val_h
+            prev_l = series_l.iloc[-1 - lookback_days] if len(series_l) > lookback_days else val_l
+            
+            res[key_h] = {
+                "val": val_h, 
+                "pct": ((val_h - prev_h) / prev_h * 100) if prev_h != 0 and not pd.isna(prev_h) else 0.0
+            }
+            res[key_l] = {
+                "val": val_l, 
+                "pct": ((val_l - prev_l) / prev_l * 100) if prev_l != 0 and not pd.isna(prev_l) else 0.0
+            }
+        except:
+            res[key_h] = {"val": 0.0, "pct": 0.0}
+            res[key_l] = {"val": 0.0, "pct": 0.0}
+
     # Bollinger Bands
-    try:
-        bb = ta.volatility.BollingerBands(df_ta['Close'])
-        res["Volat BBH"] = {"val": bb.bollinger_hband().iloc[-1], "pct": 0.0}
-        res["Volat BBL"] = {"val": bb.bollinger_lband().iloc[-1], "pct": 0.0}
-    except:
-        res["Volat BBH"] = {"val": 0.0, "pct": 0.0}
-        res["Volat BBL"] = {"val": 0.0, "pct": 0.0}
+    bb = ta.volatility.BollingerBands(df_ta['Close'])
+    calc_volat("Volat BBH", "Volat BBL", bb.bollinger_hband(), bb.bollinger_lband())
 
     # Keltner Channels
-    try:
-        kc = ta.volatility.KeltnerChannel(df_ta['High'], df_ta['Low'], df_ta['Close'])
-        res["Volat KCH"] = {"val": kc.keltner_channel_hband().iloc[-1], "pct": 0.0}
-        res["Volat KCL"] = {"val": kc.keltner_channel_lband().iloc[-1], "pct": 0.0}
-    except:
-        res["Volat KCH"] = {"val": 0.0, "pct": 0.0}
-        res["Volat KCL"] = {"val": 0.0, "pct": 0.0}
+    kc = ta.volatility.KeltnerChannel(df_ta['High'], df_ta['Low'], df_ta['Close'])
+    calc_volat("Volat KCH", "Volat KCL", kc.keltner_channel_hband(), kc.keltner_channel_lband())
 
     return res
 
