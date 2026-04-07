@@ -187,9 +187,7 @@ with st.sidebar:
     )
 
     
-    st.markdown("---")
-    st.subheader("Modelo AI")
-    algoritmo = st.selectbox("Algoritmo de Proyección", options=["Ensemble (RF + XGB)", "XGBoost", "Random Forest"])
+   
     
     st.markdown("---")
     st.subheader("Proyección")
