@@ -209,7 +209,8 @@ import sqlite3
 # --- DOWNLOAD DATA ---
 @st.cache_data
 def descargar_datos(ticker):
-    db_path = r"c:\Users\Farmatodo Kike\Documents\4Geeks Data science\Proyecto_Final\src\sp500_market_data.db"
+    dir_actual = os.path.dirname(os.path.abspath(__file__))
+    db_path = os.path.join(dir_actual, "sp500_market_data.db")
     try:
         conn = sqlite3.connect(db_path)
         query = f"SELECT * FROM sp500_daily_metrics WHERE Ticker = '{ticker}'"

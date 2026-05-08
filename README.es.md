@@ -1,114 +1,137 @@
-# Plantilla de Proyecto de Ciencia de Datos
+# Advanced Quant Trading Platform (Oráculo Financiero)
 
-Esta plantilla está diseñada para impulsar proyectos de ciencia de datos proporcionando una configuración básica para conexiones de base de datos, procesamiento de datos, y desarrollo de modelos de aprendizaje automático. Incluye una organización estructurada de carpetas para tus conjuntos de datos y un conjunto de paquetes de Python predefinidos necesarios para la mayoría de las tareas de ciencia de datos.
+![Status](https://img.shields.io/badge/Status-Production--Ready-success?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-2.1.0-blue?style=for-the-badge)
+![Python](https://img.shields.io/badge/Python-3.9%2B-blue?style=for-the-badge&logo=python&logoColor=white)
 
 ## Enlace a la app: https://oraculo-financiero.onrender.com
 
-## Estructura
+Documentación técnica detallada sobre la arquitectura, diseño y operaciones de la plataforma Advanced Quant Trading. Este documento sigue los estándares de ingeniería para sistemas de misión crítica.
 
-El proyecto está organizado de la siguiente manera:
+---
 
-- **`src/app.py`** → Script principal de Python donde correrá tu proyecto.
-- **`src/explore.ipynb`** → Notebook para exploración y pruebas. Una vez finalizada la exploración, migra el código limpio a `app.py`.
-- **`src/utils.py`** → Funciones auxiliares, como conexión a bases de datos.
-- **`requirements.txt`** → Lista de paquetes de Python necesarios.
-- **`models/`** → Contendrá tus clases de modelos SQLAlchemy.
-- **`data/`** → Almacena los datasets en diferentes etapas:
-  - **`data/raw/`** → Datos sin procesar.
-  - **`data/interim/`** → Datos transformados temporalmente.
-  - **`data/processed/`** → Datos listos para análisis.
+## 1. Visión Ejecutiva
 
+### Propuesta de Valor
+La plataforma **Advanced Quant Trading** es una herramienta de grado institucional diseñada para proporcionar inteligencia accionable en los mercados financieros. Combina análisis técnico avanzado, simulaciones estocásticas de riesgo e inteligencia predictiva basada en Machine Learning, permitiendo a los analistas cuantitativos y traders tomar decisiones basadas en datos empíricos y probabilidades, reduciendo el ruido cognitivo inherente al mercado.
 
-## ⚡ Configuración Inicial en Codespaces (Recomendado)
+### Problema que Resuelve
+Los analistas financieros se enfrentan a la sobrecarga de información y a la latencia en el cálculo de múltiples escenarios de riesgo. Esta plataforma resuelve este cuello de botella consolidando la ingesta de datos en tiempo real, el cálculo de docenas de indicadores técnicos, la proyección probabilística del riesgo (Monte Carlo) y el modelado predictivo (XGBoost) en un panel de control unificado y de baja latencia.
 
-No es necesario realizar ninguna configuración manual, ya que **Codespaces se configura automáticamente** con los archivos predefinidos que ha creado la academia para ti. Simplemente sigue estos pasos:
+---
 
-1. **Espera a que el entorno se configure automáticamente**.
-   - Todos los paquetes necesarios y la base de datos se instalarán por sí mismos.
-   - El `username` y `db_name` creados automáticamente están en el archivo **`.env`** en la raíz del proyecto.
-2. **Una vez que Codespaces esté listo, puedes comenzar a trabajar inmediatamente**.
+## 2. Arquitectura y Tech Stack
 
+El sistema adopta una arquitectura de **Monolito Modular Orientado a Datos (Data-Driven Modular Monolith)**, priorizando el rendimiento computacional y la mantenibilidad. La separación estricta entre la capa de presentación, el motor de inferencia matemática y el pipeline de datos permite una evolución independiente de los componentes.
 
-## 💻 Configuración en Local (Solo si no puedes usar Codespaces)
+### Decisiones de Stack Tecnológico
 
-**Prerrequisitos**
+| Componente | Tecnología | Justificación Arquitectónica |
+| :--- | :--- | :--- |
+| **Frontend & UI** | **Streamlit** | Permite el desarrollo declarativo de la UI directamente en Python, eliminando la sobrecarga de mantener un framework JS separado. Ideal para aplicaciones data-heavy de uso interno. |
+| **Data Processing** | **Pandas & NumPy** | Estándar de la industria para manipulación vectorial de series temporales. Garantiza procesamiento en memoria de baja latencia. |
+| **Machine Learning** | **XGBoost** | Algoritmo *Gradient Boosting* altamente optimizado para datos tabulares estructurados. Supera a las redes neuronales en series de tiempo financieras en términos de rendimiento y explicabilidad (Feature Importance). |
+| **Simulación Estocástica** | **NumPy (Vectorized)** | El modelo *Geometric Brownian Motion* (GBM) se ejecuta vectorialmente sobre matrices de NumPy, calculando miles de trayectorias en milisegundos sin bucles pesados. |
+| **Capa de Datos** | **SQLite + yfinance** | Arquitectura híbrida: SQLite actúa como un caché persistente local de alta velocidad para datos históricos (SP500), mientras que `yfinance` sirve como fallback dinámico para datos en vivo. |
+| **Visualización** | **Plotly (Go)** | Renderizado basado en WebGL, permitiendo gráficos interactivos fluidos incluso con miles de puntos de datos (velas japonesas, nubes de dispersión, heatmaps). |
 
-Asegúrate de tener Python 3.11+ instalado en tu máquina. También necesitarás pip para instalar los paquetes de Python.
+---
 
-**Instalación**
+## 3. Principios de Diseño y Patrones
 
-Clona el repositorio del proyecto en tu máquina local.
+La base de código está estructurada siguiendo principios de ingeniería robustos para garantizar su escalabilidad a medida que aumenta la complejidad cuantitativa.
 
-Navega hasta el directorio del proyecto e instala los paquetes de Python requeridos:
+*   **Separation of Concerns (SoC):** La lógica de negocio está estrictamente desacoplada. `app.py` actúa únicamente como controlador de presentación. Las matemáticas complejas residen en `simulation.py` y los cálculos de análisis técnico en `indicators.py`. El pipeline de entrenamiento está aislado en `retrenar_modelo.py`.
+*   **Memoization Pattern (Caché Multinivel):** Debido a que los cálculos de Monte Carlo y descargas de red son costosos, el sistema emplea la decoración `@st.cache_data` intensivamente. Esto asegura que parámetros idénticos recuperen los resultados de la memoria RAM en O(1), escalando eficientemente con múltiples usuarios simultáneos.
+*   **Fallback & Resilience Pattern (Graceful Degradation):** El módulo de ingesta de datos intenta leer primero desde una base de datos SQLite precompilada (`sp500_market_data.db`). Si el activo no existe o el archivo no está accesible, el sistema hace *fallback* automáticamente a las APIs web (`yfinance`) sin interrumpir la sesión del usuario.
+*   **Vectorización de Cálculos Matemáticos:** Se evitan los bucles `for` en las simulaciones probabilísticas. En su lugar, el Movimiento Browniano Geométrico calcula matrices estocásticas en bloques contiguos de memoria usando las capacidades de C de NumPy.
+
+---
+
+## 4. Guía de Inicio Rápido (Local Development)
+
+Siga estas instrucciones para levantar el entorno de desarrollo local.
+
+### Prerequisitos
+*   Python 3.9 o superior.
+*   Gestor de paquetes `pip` y entorno virtual.
+
+### Setup de Entorno
 
 ```bash
+# 1. Clonar el repositorio
+git clone <repository_url>
+cd Proyecto_Final
+
+# 2. Crear y activar el entorno virtual
+python -m venv venv
+source venv/bin/activate  # En Windows: .\venv\Scripts\activate
+
+# 3. Instalar las dependencias estrictas
 pip install -r requirements.txt
+
+# 4. (Opcional) Ejecutar pipeline de reentrenamiento del modelo
+python src/retrenar_modelo.py
+
+# 5. Levantar el servidor de desarrollo
+streamlit run src/app.py
 ```
 
-**Crear una base de datos (si es necesario)**
+El servidor estará disponible en `http://localhost:8501`.
 
-Crea una nueva base de datos dentro del motor Postgres personalizando y ejecutando el siguiente comando: 
+### Ejecución con Docker (Recomendado)
+
+La aplicación cuenta con soporte nativo para contenedores e incluye resolución dinámica de rutas para bases de datos locales (`SQLite`), haciéndola 100% *cross-platform*.
 
 ```bash
-$ psql -U postgres -c "DO \$\$ BEGIN 
-    CREATE USER mi_usuario WITH PASSWORD 'mi_contraseña'; 
-    CREATE DATABASE mi_base_de_datos OWNER mi_usuario; 
-END \$\$;"
-```
-Conéctate al motor Postgres para usar tu base de datos, manipular tablas y datos: 
+# 1. Construir la imagen optimizada
+docker build -t quant-platform:latest .
 
-```bash
-$ psql -U mi_usuario -d mi_base_de_datos
+# 2. Levantar el contenedor
+docker run -p 8501:8501 quant-platform:latest
 ```
 
-¡Una vez que estés dentro de PSQL podrás crear tablas, hacer consultas, insertar, actualizar o eliminar datos y mucho más!
+El dashboard estará accesible en `http://localhost:8501`.
 
-**Variables de entorno**
+---
 
-Crea un archivo .env en el directorio raíz del proyecto para almacenar tus variables de entorno, como tu cadena de conexión a la base de datos:
+## 5. Estrategia de Testing y Calidad
 
-```makefile
-DATABASE_URL="postgresql://<USUARIO>:<CONTRASEÑA>@<HOST>:<PUERTO>/<NOMBRE_BD>"
+Para asegurar la confiabilidad matemática de los modelos, el sistema debe regirse por los siguientes umbrales y tipos de pruebas:
 
-#example
-DATABASE_URL="postgresql://mi_usuario:mi_contraseña@localhost:5432/mi_base_de_datos"
-```
+*   **Pruebas Unitarias (Pytest):** Cobertura mínima esperada: **85%**. Enfocadas en verificar la pureza matemática de las funciones en `simulation.py` (ej. asegurar que el cálculo del *Drift* sea coherente con la volatilidad base) y la precisión de los indicadores en `indicators.py`.
+*   **Pruebas de Integración:** Validar el contrato de datos entre la descarga web (`yfinance`) y el fallback local (`SQLite`). Asegurar que los DataFrames devueltos compartan idéntico esquema, índices temporales y manejo de NaNs.
+*   **Pruebas de Seguridad (Data Sanitization):** Validación estricta para evitar la inyección de `np.inf` y `NaN` en las matrices de features del modelo XGBoost, previniendo *segmentation faults* o cálculos corruptos en producción.
 
-## Ejecutando la Aplicación
+---
 
-Para ejecutar la aplicación, ejecuta el script app.py desde la raíz del directorio del proyecto:
+## 6. Pipeline de CI/CD y Deployment
 
-```bash
-python src/app.py
-```
+### Continuous Integration (GitHub Actions)
+En cada `Push` o `Pull Request` hacia la rama principal, se ejecutarán flujos automatizados:
+1.  **Code Linting:** `flake8` y `black` para asegurar adherencia al PEP-8.
+2.  **Ejecución de Tests:** Corridas completas de `pytest`.
+3.  **Análisis Estático:** Uso de `bandit` para identificar vulnerabilidades de seguridad en el código Python.
 
-## Añadiendo Modelos
+### Deployment Strategy (Docker & Serverless)
+Para ambientes de producción, la aplicación está diseñada para ser *Stateless* (con la excepción de la caché en memoria).
+1.  **Containerización:** El repositorio incluye un `Dockerfile` optimizado (basado en `python:3.10-slim`) y un `.dockerignore` estricto. El contenedor gestiona dependencias del SO, caché de capas en Python y expone el servicio en el puerto 8501 sin requerir configuraciones adicionales.
+2.  **Hosting Recomendado:** Para soportar picos de carga (análisis concurrentes), se recomienda desplegar la imagen en plataformas de contenedores serverless como **AWS ECS Fargate** o **Google Cloud Run**, configurando políticas de auto-scaling basadas en utilización de CPU.
 
-Para añadir clases de modelos SQLAlchemy, crea nuevos archivos de script de Python dentro del directorio models/. Estas clases deben ser definidas de acuerdo a tu esquema de base de datos.
+---
 
-Definición del modelo de ejemplo (`models/example_model.py`):
+## 7. Guía de Contribución y Estilo
 
-```py
-from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy import String
-from sqlalchemy.orm import Mapped, mapped_column
+Todo desarrollo dentro de este repositorio debe adherirse estrictamente a las convenciones institucionales para asegurar la legibilidad y mantenibilidad a largo plazo.
 
-Base = declarative_base()
+### Flujo de Trabajo (Trunk-based Development)
+*   Las características de corta duración se ramifican desde `main` (`feature/nombre-corto`).
+*   Integración rápida y continua: Evitamos ramas de largo ciclo de vida para minimizar el *merge conflict hell*.
+*   **Code Review Obligatorio:** Ningún PR puede fusionarse a `main` sin la revisión y aprobación técnica de al menos un ingeniero (L5+).
 
-class ExampleModel(Base):
-    __tablename__ = 'example_table'
-    id: Mapped[int] = mapped_column(primary_key=True)
-    username: Mapped[str] = mapped_column(unique=True)
-```
-
-## Trabajando con Datos
-
-Puedes colocar tus conjuntos de datos brutos en el directorio data/raw, conjuntos de datos intermedios en data/interim, y los conjuntos de datos procesados listos para el análisis en data/processed.
-
-Para procesar datos, puedes modificar el script app.py para incluir tus pasos de procesamiento de datos, utilizando pandas para la manipulación y análisis de datos.
-
-## Contribuyentes
-
-Esta plantilla fue construida como parte del [Data Science and Machine Learning Bootcamp](https://4geeksacademy.com/us/coding-bootcamps/datascience-machine-learning) de 4Geeks Academy por [Alejandro Sanchez](https://twitter.com/alesanchezr) y muchos otros contribuyentes. Descubre más sobre [los programas BootCamp de 4Geeks Academy](https://4geeksacademy.com/us/programs) aquí.
-
-Otras plantillas y recursos como este se pueden encontrar en la página de GitHub de la escuela.
+### Convenciones de Git (Conventional Commits)
+Los mensajes de commit deben seguir el estándar para facilitar la autogeneración de *Changelogs*.
+*   `feat: [Módulo] Añade nueva simulación de estrés de liquidez`
+*   `fix: [Datos] Corrige manejo de fechas NaN en descarga de yfinance`
+*   `refactor: [UI] Optimiza renderizado de la grilla de métricas clave`
+*   `perf: [Simulación] Vectoriza cálculo de percentiles reduciendo tiempo en 40%`
